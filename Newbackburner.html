@@ -1,0 +1,1473 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2113.65">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+    span.s1 {font: 12.0px 'Apple Color Emoji'}
+    span.s2 {font: 12.0px 'PingFang SC'}
+  </style>
+</head>
+<body>
+<p class="p1">import os, textwrap, json, zipfile, pathlib, re, shutil, datetime, sys, io</p>
+<p class="p2"><br></p>
+<p class="p1">base = "/mnt/data/backburner-site"</p>
+<p class="p1">if os.path.exists(base):</p>
+<p class="p1"><span class="Apple-converted-space">    </span>shutil.rmtree(base)</p>
+<p class="p1">os.makedirs(base)</p>
+<p class="p2"><br></p>
+<p class="p1"># Folder structure</p>
+<p class="p1">folders = [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"src",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"public",</p>
+<p class="p1">]</p>
+<p class="p1">for f in folders:</p>
+<p class="p1"><span class="Apple-converted-space">    </span>os.makedirs(os.path.join(base, f), exist_ok=True)</p>
+<p class="p2"><br></p>
+<p class="p1">app_tsx = r"""import React from "react";</p>
+<p class="p1">import BackburnerCompetitiveSite from "./BackburnerCompetitiveSite";</p>
+<p class="p2"><br></p>
+<p class="p1">export default function App() {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return &lt;BackburnerCompetitiveSite /&gt;;</p>
+<p class="p1">}</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1"># Use the canvas content as BackburnerCompetitiveSite.tsx</p>
+<p class="p1">backburner_tsx = r"""import React, { memo, useCallback, useMemo, useState } from "react";</p>
+<p class="p1">import { motion } from "framer-motion";</p>
+<p class="p2"><br></p>
+<p class="p1">/**</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* The Backburner Competitive Microsite (Hockessin, DE)</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* Purpose: Present a clear, conversion-first 90-day marketing plan to out-compete</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* Red Fire Grill and William &amp; Mary.</p>
+<p class="p1"><span class="Apple-converted-space"> </span>*</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* Notes:</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* - Single-file React + Tailwind (sandbox-safe).</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* - No external icon dependencies.</p>
+<p class="p1"><span class="Apple-converted-space"> </span>* - Forms can post to Google Sheets WebApp and/or an email endpoint.</p>
+<p class="p1"><span class="Apple-converted-space"> </span>*/</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Utilities</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">const cx = (...classes: Array&lt;string | false | null | undefined&gt;) =&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>classes.filter(Boolean).join(" ");</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Sandbox-safe icons</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">type IconProps = { symbol: string; className?: string; label?: string };</p>
+<p class="p1">const Icon = ({ symbol, className = "", label }: IconProps) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;span</p>
+<p class="p1"><span class="Apple-converted-space">    </span>className={cx("inline-flex items-center justify-center shrink-0 select-none", className)}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>aria-label={label}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>role={label ? "img" : undefined}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{symbol}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/span&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Deploy config (edit once)</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">const DEPLOY_CONFIG = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>OPENTABLE_URL: "https://thebackburner.com/", // replace with real reservation link</p>
+<p class="p1"><span class="Apple-converted-space">  </span>GOOGLE_SHEETS_WEBAPP_URL: "", // e.g., https://script.google.com/macros/s/XXXX/exec</p>
+<p class="p1"><span class="Apple-converted-space">  </span>EMAIL_FORM_ENDPOINT: "", // e.g., https://formspree.io/f/XXXX</p>
+<p class="p1"><span class="Apple-converted-space">  </span>directionsUrl:</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"https://www.google.com/maps/dir/?api=1&amp;destination=The%20Backburner%2C%20Hockessin%2C%20DE%2019707",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>phoneDisplay: "(302) 000-0000", // replace with real phone</p>
+<p class="p1"><span class="Apple-converted-space">  </span>addressDisplay: "Hockessin, DE 19707",</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Strategy data</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">type Mode = "Executive" | "Deep Dive";</p>
+<p class="p2"><br></p>
+<p class="p1">type Differentiator = { title: string; desc: string; symbol: string };</p>
+<p class="p1">type ContentPillar = { title: string; bullets: string[] };</p>
+<p class="p1">type CalendarWeek = { week: number; theme: string; posts: string[] };</p>
+<p class="p1">type AdConcept = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>title: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>hook: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>copy: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>cta: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>channels: string;</p>
+<p class="p1">};</p>
+<p class="p1">type KPI = { label: string; value: string; symbol: string };</p>
+<p class="p2"><br></p>
+<p class="p1">type StrategyData = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>location: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>competitors: string[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>MESSAGING_ANGLES: string[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>DIFFERENTIATORS: Differentiator[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>CONTENT_PILLARS: ContentPillar[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>CALENDAR: CalendarWeek[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>AD_CONCEPTS: AdConcept[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>KPI_ROWS: KPI[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>PHASE_TEXT: Record&lt;Mode, { v1: string; v2: string }&gt;;</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">const strategyData: StrategyData = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>location: "Hockessin, DE 19707",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>competitors: ["Red Fire Grill", "William &amp; Mary"],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>MESSAGING_ANGLES: [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"Hockessin’s modern upscale-casual American destination.",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"Elevated dining without the stiffness — warm, contemporary, confident.",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"Chef-driven seasonal plates and a refined bar program.",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"A top-tier date-night and occasion experience close to home.",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>DIFFERENTIATORS: [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Modern American Craft",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>desc:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Seasonal, chef-forward cooking and polished plating that feels current — not old-school.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>symbol: "<span class="s1">🔥</span>",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Refined, Not Formal",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>desc:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Upscale atmosphere with approachable energy. Perfect for date night and business dinners.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>symbol: "<span class="s1">✨</span>",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Bar &amp; Cocktail Culture",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>desc:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Lead with signature cocktails and wine moments to pull younger and social diners away from competitors.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>symbol: "<span class="s1">🍸</span>",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Occasion + Private Dining",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>desc:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Own celebrations in Hockessin with clear private-event packages and modern service.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>symbol: "<span class="s1">📅</span>",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>CONTENT_PILLARS: [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Seasonal Plates",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>bullets: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Chef specials &amp; market features",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Plating close-ups",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"‘Why this dish’ storytelling",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Cocktail &amp; Wine",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>bullets: ["Signature pours", "Bar-top vibe", "Pairing nights &amp; limited drops"],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Tonight at Backburner",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>bullets: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Dining room &amp; patio energy",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Date-night scenes",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Guest celebrations",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Occasions &amp; Events",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>bullets: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Private dining showcases",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Birthday/anniversary moments",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Corporate dinner highlights",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>CALENDAR: [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>week: 1,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>theme: "Re-introduce Backburner (Modern + Local)",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>posts: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Reel: chef plating seasonal feature",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Carousel: dining room vibe + signature dishes",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Story: ‘Tonight at Backburner’ reservation CTA",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Post: cocktail spotlight + bar scene",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"UGC repost + review ask",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>week: 2,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>theme: "Date Night &amp; Occasions",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>posts: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Reel: date-night table + dessert finish",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Photo: anniversary/birthday celebration",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Story poll: choose next seasonal entrée",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Chef clip: behind-the-scenes prep",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Weekend vibe montage",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>week: 3,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>theme: "Bar Program + Pairings",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>posts: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Reel: signature cocktail pour",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Photo: wine pairing with feature",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Story: pairing night countdown",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Post: bartender intro",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Short guest testimonial",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>week: 4,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>theme: "Scarcity Drop + Private Events Push",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>posts: [</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Reel: limited-edition seasonal dish",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Carousel: private events CTA",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Story: event lead CTA",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Photo: date-night dining room",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Partner post with local business",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>AD_CONCEPTS: [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Modern Date Night in Hockessin",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>hook: "Your new favorite upscale night out.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>copy:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Skip the predictable. Backburner serves modern American plates, a refined bar, and a warm, contemporary vibe — perfect for date night.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cta: "Reserve for this weekend",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>channels: "IG/FB Reels • Google Search",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Chef’s Seasonal Feature",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>hook: "Only here this month.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>copy:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"A limited seasonal plate built around fresh market ingredients. Book now before it’s gone.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cta: "See the feature",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>channels: "Google Search • Instagram",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>title: "Private Dining &amp; Celebrations",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>hook: "Celebrate in style close to home.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>copy:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Birthdays, corporate dinners, rehearsal nights — private dining with a chef-driven menu.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cta: "Request event info",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>channels: "Meta Lead Ads • Google Maps",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>KPI_ROWS: [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{ label: "New 5<span class="s2">★</span> Reviews in 60 Days", value: "+120", symbol: "<span class="s1">📈</span>" },</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{ label: "Reels per Week", value: "4–5", symbol: "<span class="s1">🎥</span>" },</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{ label: "Weekend Table Fill", value: "90%+", symbol: "<span class="s1">🎯</span>" },</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{ label: "Private Events / Month", value: "3–4", symbol: "<span class="s1">👥</span>" },</p>
+<p class="p1"><span class="Apple-converted-space">  </span>],</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>PHASE_TEXT: {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>Executive: {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>v1:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Win share from Red Fire Grill and William &amp; Mary by owning modern American craft + refined energy.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>v2:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Backburner becomes the default for date night, occasions, and business dinners in Hockessin.",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"Deep Dive": {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>v1:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Competitors occupy ‘upscale-casual American’ territory, so we steal demand by reframing choice as modern, chef-driven, and bar-forward vs. predictable classics.",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>v2:</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"Push high-frequency social + Google visibility, add scarcity seasonal drops, and convert into loyalty and private-event leads.",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>},</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// UI primitives</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">type SectionProps = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>id?: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>className?: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>children: React.ReactNode;</p>
+<p class="p1">};</p>
+<p class="p1">const Section = ({ id, className = "", children }: SectionProps) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;section</p>
+<p class="p1"><span class="Apple-converted-space">    </span>id={id}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>className={cx(</p>
+<p class="p1"><span class="Apple-converted-space">      </span>"max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-18",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>className</p>
+<p class="p1"><span class="Apple-converted-space">    </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{children}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const Pill = ({ children }: { children: React.ReactNode }) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs sm:text-sm text-white/90 backdrop-blur"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{children}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/span&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const Card = ({</p>
+<p class="p1"><span class="Apple-converted-space">  </span>children,</p>
+<p class="p1"><span class="Apple-converted-space">  </span>className = "",</p>
+<p class="p1">}: {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>children: React.ReactNode;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>className?: string;</p>
+<p class="p1">}) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div</p>
+<p class="p1"><span class="Apple-converted-space">    </span>className={cx(</p>
+<p class="p1"><span class="Apple-converted-space">      </span>"rounded-2xl bg-white/5 border border-white/10 shadow-lg shadow-black/20 backdrop-blur p-5 sm:p-6",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>className</p>
+<p class="p1"><span class="Apple-converted-space">    </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{children}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const Toggle = ({</p>
+<p class="p1"><span class="Apple-converted-space">  </span>options,</p>
+<p class="p1"><span class="Apple-converted-space">  </span>value,</p>
+<p class="p1"><span class="Apple-converted-space">  </span>onChange,</p>
+<p class="p1">}: {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>options: Mode[];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>value: Mode;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>onChange: (m: Mode) =&gt; void;</p>
+<p class="p1">}) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div</p>
+<p class="p1"><span class="Apple-converted-space">    </span>className="inline-flex rounded-xl bg-white/5 border border-white/10 p-1"</p>
+<p class="p1"><span class="Apple-converted-space">    </span>role="tablist"</p>
+<p class="p1"><span class="Apple-converted-space">    </span>aria-label="Detail level"</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>{options.map((opt) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;button</p>
+<p class="p1"><span class="Apple-converted-space">        </span>key={opt}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>type="button"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>role="tab"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>onClick={() =&gt; onChange(opt)}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>className={cx(</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"px-3 py-1.5 rounded-lg text-sm transition",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>value === opt</p>
+<p class="p1"><span class="Apple-converted-space">            </span>? "bg-white/15 text-white"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>: "text-white/70 hover:text-white"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>aria-selected={value === opt}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>{opt}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const TimelineItem = memo(</p>
+<p class="p1"><span class="Apple-converted-space">  </span>({ week, title, bullets }: { week: string; title: string; bullets: string[] }) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="relative pl-10 pb-10"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div className="absolute left-2 top-0 h-full w-px bg-gradient-to-b from-orange-400/70 via-white/10 to-transparent" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div className="absolute left-0 top-0 rounded-full bg-orange-400 p-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="h-3 w-3 rounded-full bg-black" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="flex flex-wrap items-center justify-between gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Pill&gt;Weeks {week}&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="text-lg sm:text-xl font-semibold text-white"&gt;{title}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;ul className="mt-3 grid gap-2 text-sm sm:text-base text-white/85"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>{bullets.map((b, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;li key={i} className="flex gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;Icon symbol="<span class="s1">✅</span>" className="w-5 h-5 mt-0.5" label="check" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>{b}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>)</p>
+<p class="p1">);</p>
+<p class="p1">TimelineItem.displayName = "TimelineItem";</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Networking helper</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">type SubmitPayload = Record&lt;string, unknown&gt;;</p>
+<p class="p2"><br></p>
+<p class="p1">const postToEndpoints = async (payload: SubmitPayload) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const requests: Promise&lt;Response&gt;[] = [];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const controller = new AbortController();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const timeout = setTimeout(() =&gt; controller.abort(), 9000);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>try {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (DEPLOY_CONFIG.GOOGLE_SHEETS_WEBAPP_URL) {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>requests.push(</p>
+<p class="p1"><span class="Apple-converted-space">        </span>fetch(DEPLOY_CONFIG.GOOGLE_SHEETS_WEBAPP_URL, {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>method: "POST",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>headers: { "Content-Type": "application/json" },</p>
+<p class="p1"><span class="Apple-converted-space">          </span>body: JSON.stringify(payload),</p>
+<p class="p1"><span class="Apple-converted-space">          </span>signal: controller.signal,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>})</p>
+<p class="p1"><span class="Apple-converted-space">      </span>);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (DEPLOY_CONFIG.EMAIL_FORM_ENDPOINT) {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>requests.push(</p>
+<p class="p1"><span class="Apple-converted-space">        </span>fetch(DEPLOY_CONFIG.EMAIL_FORM_ENDPOINT, {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>method: "POST",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>headers: { "Content-Type": "application/json" },</p>
+<p class="p1"><span class="Apple-converted-space">          </span>body: JSON.stringify(payload),</p>
+<p class="p1"><span class="Apple-converted-space">          </span>signal: controller.signal,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>})</p>
+<p class="p1"><span class="Apple-converted-space">      </span>);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!requests.length) throw new Error("No endpoints configured");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const results = await Promise.allSettled(requests);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const ok = results.some(</p>
+<p class="p1"><span class="Apple-converted-space">      </span>(r) =&gt; r.status === "fulfilled" &amp;&amp; r.value.ok</p>
+<p class="p1"><span class="Apple-converted-space">    </span>);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!ok) throw new Error("Submission failed");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>} finally {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>clearTimeout(timeout);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Sections</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">const HeroSection = ({ mode }: { mode: Mode }) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="home" className="pt-10 sm:pt-14"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="grid lg:grid-cols-2 gap-8 items-center"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;motion.h1</p>
+<p class="p1"><span class="Apple-converted-space">          </span>initial={{ opacity: 0, y: 10 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>animate={{ opacity: 1, y: 0 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>transition={{ duration: 0.6 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>className="text-4xl sm:text-5xl lg:text-6xl font-semibold leading-tight"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>The Backburner wins Hockessin</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;br /&gt;with Modern American Fine Dining.</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/motion.h1&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;motion.p</p>
+<p class="p1"><span class="Apple-converted-space">          </span>initial={{ opacity: 0, y: 10 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>animate={{ opacity: 1, y: 0 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>transition={{ duration: 0.7 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>className="mt-4 text-lg text-white/80"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>{strategyData.PHASE_TEXT[mode].v1}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/motion.p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;motion.p</p>
+<p class="p1"><span class="Apple-converted-space">          </span>initial={{ opacity: 0, y: 10 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>animate={{ opacity: 1, y: 0 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>transition={{ duration: 0.7, delay: 0.08 }}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>className="mt-3 text-white/75"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>{strategyData.PHASE_TEXT[mode].v2}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/motion.p&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="mt-6 flex flex-wrap gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Icon symbol="<span class="s1">📍</span>" className="mr-1" label="location" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>{strategyData.location}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Icon symbol="<span class="s1">🎶</span>" className="mr-1" label="music" /&gt; Weekend vibe + features</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Pill&gt;Chef Seasonal Drops&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Pill&gt;Private Dining&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="mt-8 flex flex-col sm:flex-row gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href="#launch"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-black hover:bg-orange-400 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Start 90-Day Campaign &lt;Icon symbol="<span class="s1">➡️</span>" label="arrow" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href="#battle"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 border border-white/15 px-5 py-3 font-semibold hover:bg-white/15 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>View Competitive Plan</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href="#visit"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 border border-orange-400/50 px-5 py-3 font-semibold hover:bg-white/15 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Get Directions &lt;Icon symbol="<span class="s1">➡️</span>" label="arrow" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;motion.div</p>
+<p class="p1"><span class="Apple-converted-space">        </span>initial={{ opacity: 0, scale: 0.98 }}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>animate={{ opacity: 1, scale: 1 }}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>transition={{ duration: 0.8 }}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>className="relative"</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="absolute -inset-4 bg-gradient-to-tr from-orange-500/20 via-white/5 to-transparent blur-2xl rounded-3xl" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card className="relative"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="text-sm text-white/70"&gt;Primary Positioning&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-2 text-2xl sm:text-3xl font-semibold"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>“Hockessin’s Modern Fine-Dining Choice”</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-3 text-white/80"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Elevated American plates, refined bar program, and warm hospitality — premium without pretension.</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-5 grid sm:grid-cols-2 gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>{strategyData.MESSAGING_ANGLES.map((m, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div</p>
+<p class="p1"><span class="Apple-converted-space">                </span>key={i}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white/85"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>{m}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/motion.div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const PositioningSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="positioning"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>Strategic Positioning vs. Red Fire Grill &amp; William &amp; Mary</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;p className="mt-2 text-white/70 max-w-2xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>All three play upscale-casual American. Backburner wins by owning modern craft, bar culture, and refined energy.</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Icon symbol="<span class="s1">✨</span>" className="mr-1" label="sparkle" /&gt; Share-Steal Plan</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-8 grid md:grid-cols-2 lg:grid-cols-4 gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>{strategyData.DIFFERENTIATORS.map(({ title, desc, symbol }, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card key={i} className="h-full"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-center gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="rounded-xl bg-white/10 p-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;Icon symbol={symbol} className="text-lg" label="icon" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="font-semibold text-lg"&gt;{title}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-3 text-sm text-white/80 leading-relaxed"&gt;{desc}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-8 grid lg:grid-cols-2 gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="flex items-center gap-2 text-lg font-semibold"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Icon symbol="<span class="s1">📣</span>" className="text-lg" label="megaphone" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>What Backburner Should Say</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;ul className="mt-3 grid gap-2 text-white/85"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• “Modern American fine dining for Hockessin.”&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• “Chef-driven seasonal plates + refined cocktails.”&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• “The upscale night out that feels easy.”&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• “Where occasions feel special, not stiff.”&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="flex items-center gap-2 text-lg font-semibold"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Icon symbol="<span class="s1">🎯</span>" className="text-lg" label="target" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>What Backburner Must Avoid</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;ul className="mt-3 grid gap-2 text-white/85"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• Generic “great food, great service.”&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• Competing on old-school traditionalism.&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• Heavy, dated visuals.&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;li&gt;• Quiet, formal tone.&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const BattlePlanSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="battle"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;The 90-Day Competitive Battle Plan&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;p className="mt-2 text-white/70 max-w-3xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>Win attention fast, differentiate through modern craft, and convert into loyalty + private events.</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-8"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;TimelineItem</p>
+<p class="p1"><span class="Apple-converted-space">        </span>week="1–4"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>title="Awareness Surge"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>bullets={[</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Google Business Profile refresh + 2 posts/week",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"4–5 Reels/week: seasonal plates, cocktails, dining-room energy",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Invite local micro-influencers for tasting nights",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Search + social ads for ‘fine dining Hockessin / date night / private dining’",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>]}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;TimelineItem</p>
+<p class="p1"><span class="Apple-converted-space">        </span>week="4–8"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>title="Experience Differentiation"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>bullets={[</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Monthly seasonal feature drops + cocktail pairings",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Launch ‘Chef’s Table’ or pairing dinners",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Partner with local luxury brands &amp; realtors",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"UGC flywheel: guests tag Backburner to be featured",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>]}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;TimelineItem</p>
+<p class="p1"><span class="Apple-converted-space">        </span>week="8–12"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>title="Conversion &amp; Loyalty Capture"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>bullets={[</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Retarget diners who visited competitor pages",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Priority Guest Club perks + birthday/anniversary hooks",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Review sprint to outrun competitors in fresh 5<span class="s2">★</span> volume",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"Private-event lead gen from form + retargeting",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>]}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const ContentEngineSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;Always-On Content Engine&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;p className="mt-2 text-white/70 max-w-2xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>Win Hockessin feeds with refined, modern visuals and consistent chef storytelling.</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Icon symbol="<span class="s1">🎥</span>" className="mr-1" label="video" /&gt; Reels First</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-8 grid md:grid-cols-2 lg:grid-cols-4 gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>{strategyData.CONTENT_PILLARS.map((p, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card key={i}&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="font-semibold text-lg"&gt;{p.title}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;ul className="mt-3 grid gap-1 text-sm text-white/85"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>{p.bullets.map((b, j) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;li key={j}&gt;• {b}&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const CalendarSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="calendar"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;30-Day Content Calendar&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;p className="mt-2 text-white/70 max-w-3xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>A month-one sprint to out-post and out-modernize both competitors.</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Pill&gt;4-Week Sprint&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-6 grid md:grid-cols-2 gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>{strategyData.CALENDAR.map((w) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card key={w.week}&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-center justify-between"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="font-semibold text-lg"&gt;Week {w.week}: {w.theme}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;{w.posts.length} posts&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;ul className="mt-3 grid gap-1 text-sm text-white/85"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>{w.posts.map((p, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;li key={i}&gt;• {p}&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const AdsSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="ads"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;Sample Ad Creatives &amp; Copy&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;p className="mt-2 text-white/70 max-w-3xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>High-intent ads to steal “fine dining / date night / celebration” demand in Hockessin.</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Icon symbol="<span class="s1">📣</span>" className="mr-1" label="ads" /&gt; Ready for Meta + Google</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-6 grid md:grid-cols-2 gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>{strategyData.AD_CONCEPTS.map((ad, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card key={i}&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="text-sm text-white/60"&gt;Creative Angle&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-1 text-xl font-semibold"&gt;{ad.title}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-2 text-white/90 font-medium"&gt;Hook: {ad.hook}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-2 text-sm text-white/80 leading-relaxed"&gt;{ad.copy}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-3 flex flex-wrap items-center gap-2 text-sm"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;CTA: {ad.cta}&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;{ad.channels}&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const ConversionSection = () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const [clubForm, setClubForm] = useState({ email: "", phone: "" });</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const [clubStatus, setClubStatus] = useState&lt;"idle" | "loading" | "success" | "error"&gt;("idle");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const updateClubField = useCallback(</p>
+<p class="p1"><span class="Apple-converted-space">    </span>(key: keyof typeof clubForm) =&gt; (e: React.ChangeEvent&lt;HTMLInputElement&gt;) =&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>setClubForm((f) =&gt; ({ ...f, [key]: e.target.value })),</p>
+<p class="p1"><span class="Apple-converted-space">    </span>[]</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const submitPriorityClub = useCallback(async () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>setClubStatus("loading");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>try {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if (!clubForm.email.trim()) throw new Error("Email required");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>await postToEndpoints({</p>
+<p class="p1"><span class="Apple-converted-space">        </span>...clubForm,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>source: "Backburner Competitive Microsite — Priority Guest Club",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>submittedAt: new Date().toISOString(),</p>
+<p class="p1"><span class="Apple-converted-space">      </span>});</p>
+<p class="p1"><span class="Apple-converted-space">      </span>setClubStatus("success");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>setClubForm({ email: "", phone: "" });</p>
+<p class="p1"><span class="Apple-converted-space">    </span>} catch {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>setClubStatus("error");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}, [clubForm]);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return (</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;Section id="conversion"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;Conversion Engine&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;p className="mt-2 text-white/70 max-w-3xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Turn attention into reservations, loyalty sign-ups, and repeat visits.</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Pill&gt;High-Intent CTAs&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div className="mt-8 grid lg:grid-cols-3 gap-6"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-start gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="rounded-xl bg-white/10 p-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;Icon symbol="<span class="s1">📅</span>" label="calendar" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div className="text-lg font-semibold"&gt;Reserve a Table&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;p className="text-white/80 text-sm mt-1"&gt;Direct booking online.&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href={DEPLOY_CONFIG.OPENTABLE_URL}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>target="_blank"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>rel="noopener noreferrer"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="mt-4 block text-center rounded-xl bg-orange-500 px-5 py-3 font-semibold text-black hover:bg-orange-400 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Reserve Now</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-start gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="rounded-xl bg-white/10 p-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;Icon symbol="<span class="s1">⭐</span>" label="star" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div className="text-lg font-semibold"&gt;Priority Guest Club&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;p className="text-white/80 text-sm mt-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>6th-visit reward, birthday perks, early access to seasonal drops.</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-4 grid gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="sr-only" htmlFor="club-email"&gt;Email&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">              </span>id="club-email"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>type="email"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>placeholder="Email address"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>value={clubForm.email}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>onChange={updateClubField("email")}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>className="w-full rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>required</p>
+<p class="p1"><span class="Apple-converted-space">            </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="sr-only" htmlFor="club-phone"&gt;Phone&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">              </span>id="club-phone"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>type="tel"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>placeholder="Mobile (optional for SMS perks)"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>value={clubForm.phone}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>onChange={updateClubField("phone")}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>className="w-full rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button</p>
+<p class="p1"><span class="Apple-converted-space">              </span>type="button"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>onClick={submitPriorityClub}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>disabled={clubStatus === "loading"}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>className="w-full rounded-lg bg-white/10 border border-white/15 px-4 py-2 text-sm font-semibold hover:bg-white/15 transition disabled:opacity-60 disabled:cursor-not-allowed"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>aria-live="polite"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>{clubStatus === "loading" ? "Joining..." : "Join the Club"}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>{clubStatus === "success" &amp;&amp; (</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="mt-2 text-xs text-green-300"&gt;You’re in!&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>{clubStatus === "error" &amp;&amp; (</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="mt-2 text-xs text-red-300"&gt;Valid email needed.&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-start gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="rounded-xl bg-white/10 p-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;Icon symbol="<span class="s1">📣</span>" label="megaphone" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div className="text-lg font-semibold"&gt;This Week at Backburner&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;p className="text-white/80 text-sm mt-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>Seasonal plates, bar moments, and occasion dining — updated weekly.</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;ul className="mt-4 text-white/80 text-sm space-y-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;li&gt;• Thu: Chef’s seasonal feature&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;li&gt;• Fri: Date-night dining room energy&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;li&gt;• Sat: Cocktail pairing spotlight&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;li&gt;• Sun: Private dining showcases&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/Section&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">const VisitSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="visit"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;Find The Backburner&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;p className="mt-2 text-white/70 max-w-3xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>Embedded map is disabled here to avoid google.com popups — tap for directions.</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Icon symbol="<span class="s1">📍</span>" className="mr-1" label="address" /&gt; {DEPLOY_CONFIG.addressDisplay}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-6 grid lg:grid-cols-2 gap-6"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Card className="grid place-items-center bg-black/40"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="text-center px-6"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-center justify-center gap-2 text-lg font-semibold"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Icon symbol="<span class="s1">📍</span>" className="text-orange-300" label="pin" /&gt; The Backburner</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href={DEPLOY_CONFIG.directionsUrl}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>target="_blank"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>rel="noopener noreferrer"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 font-semibold text-black hover:bg-orange-400 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Open in Google Maps &lt;Icon symbol="<span class="s1">➡️</span>" label="arrow" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Card&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="mt-2 text-sm text-white/85"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="rounded-xl bg-black/40 border border-white/10 p-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="font-semibold"&gt;Address&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;{DEPLOY_CONFIG.addressDisplay}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-3 rounded-xl bg-black/40 border border-white/10 p-3 flex items-center justify-between"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div className="font-semibold"&gt;Phone&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div&gt;{DEPLOY_CONFIG.phoneDisplay}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Icon symbol="<span class="s1">📞</span>" label="phone" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="mt-4 flex flex-col sm:flex-row gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href={DEPLOY_CONFIG.directionsUrl}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>target="_blank"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>rel="noopener noreferrer"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-black hover:bg-orange-400 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Open in Google Maps &lt;Icon symbol="<span class="s1">➡️</span>" label="arrow" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href={DEPLOY_CONFIG.OPENTABLE_URL}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>target="_blank"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>rel="noopener noreferrer"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 border border-white/15 px-5 py-3 font-semibold hover:bg-white/15 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Reserve Now</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Private Events Form</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">type EventFormState = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>name: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>email: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>phone: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>date: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>guests: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>type: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>details: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>website: string; // honeypot</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">type EventStatus = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state: "idle" | "loading" | "success" | "error";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>message: string;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>errors: string[];</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">const EventsSection = () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const [eventForm, setEventForm] = useState&lt;EventFormState&gt;({</p>
+<p class="p1"><span class="Apple-converted-space">    </span>name: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>email: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>phone: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>date: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>guests: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>type: "Birthday",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>details: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>website: "",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const [eventStatus, setEventStatus] = useState&lt;EventStatus&gt;({</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state: "idle",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>message: "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>errors: [],</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const updateField =</p>
+<p class="p1"><span class="Apple-converted-space">    </span>(key: keyof EventFormState) =&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>(</p>
+<p class="p1"><span class="Apple-converted-space">      </span>e: React.ChangeEvent&lt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>) =&gt; setEventForm((f) =&gt; ({ ...f, [key]: e.target.value }));</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const validateEvent = useCallback(() =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const errs: string[] = [];</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!eventForm.name.trim()) errs.push("Full name is required.");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!eventForm.email.trim()) errs.push("Email is required.");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!eventForm.date) errs.push("Event date is required.");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const g = Number(eventForm.guests);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!g || g &lt; 1) errs.push("Guest count must be at least 1.");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (eventForm.website) errs.push("Spam detected.");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return errs;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}, [eventForm]);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const submitPrivateEvent = useCallback(</p>
+<p class="p1"><span class="Apple-converted-space">    </span>async (e: React.FormEvent) =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>e.preventDefault();</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const errs = validateEvent();</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if (errs.length) {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>setEventStatus({</p>
+<p class="p1"><span class="Apple-converted-space">          </span>state: "error",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>message: "Fix the issues below.",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>errors: errs,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">        </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>setEventStatus({ state: "loading", message: "Sending...", errors: [] });</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>try {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>await postToEndpoints({</p>
+<p class="p1"><span class="Apple-converted-space">          </span>...eventForm,</p>
+<p class="p1"><span class="Apple-converted-space">          </span>source: "Backburner Competitive Microsite — Private Events",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>submittedAt: new Date().toISOString(),</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">        </span>setEventStatus({</p>
+<p class="p1"><span class="Apple-converted-space">          </span>state: "success",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>message: "Thanks! We’ll reply within 1 business day.",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>errors: [],</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">        </span>setEventForm({</p>
+<p class="p1"><span class="Apple-converted-space">          </span>name: "",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>email: "",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>phone: "",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>date: "",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>guests: "",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>type: "Birthday",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>details: "",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>website: "",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">      </span>} catch {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>setEventStatus({</p>
+<p class="p1"><span class="Apple-converted-space">          </span>state: "error",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>message: "Something went wrong. Please call us.",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>errors: [],</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>[eventForm, validateEvent]</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return (</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;Section id="events"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div className="flex items-end justify-between gap-4 flex-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;Book a Private Event&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;p className="mt-2 text-white/70 max-w-3xl"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Host birthdays, corporate dinners, rehearsal nights, and celebrations with modern fine-dining energy.</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Icon symbol="<span class="s1">🏛️</span>" className="mr-1" label="building" /&gt; Events &amp; Buyouts</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Card className="mt-6"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;form onSubmit={submitPrivateEvent} noValidate&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="text-lg font-semibold"&gt;Event Inquiry Form&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>{/* Honeypot */}</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="hidden"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>tabIndex={-1}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>value={eventForm.website}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>onChange={updateField("website")}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>aria-hidden</p>
+<p class="p1"><span class="Apple-converted-space">          </span>/&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-4 grid sm:grid-cols-2 gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Full Name&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">                </span>placeholder="Full Name"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.name}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("name")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>required</p>
+<p class="p1"><span class="Apple-converted-space">              </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Email&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">                </span>type="email"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>placeholder="Email"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.email}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("email")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>required</p>
+<p class="p1"><span class="Apple-converted-space">              </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Phone (optional)&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">                </span>type="tel"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>placeholder="Phone"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.phone}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("phone")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Event Date&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">                </span>type="date"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.date}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("date")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>required</p>
+<p class="p1"><span class="Apple-converted-space">              </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Guest Count&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;input</p>
+<p class="p1"><span class="Apple-converted-space">                </span>type="number"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>min={1}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>placeholder="Guest Count"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.guests}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("guests")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>required</p>
+<p class="p1"><span class="Apple-converted-space">              </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Event Type&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;select</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.type}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("type")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;option&gt;Birthday&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;option&gt;Corporate Dinner&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;option&gt;Wedding / Rehearsal&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;option&gt;Holiday Party&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;option&gt;Other&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;/select&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label className="grid gap-1 sm:col-span-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;span className="text-xs text-white/70"&gt;Details&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;textarea</p>
+<p class="p1"><span class="Apple-converted-space">                </span>rows={4}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>placeholder="Details"</p>
+<p class="p1"><span class="Apple-converted-space">                </span>value={eventForm.details}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>onChange={updateField("details")}</p>
+<p class="p1"><span class="Apple-converted-space">                </span>className="rounded-lg bg-black/40 border border-white/20 px-3 py-2 text-sm text-white placeholder-white/40"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>{eventStatus.errors.length &gt; 0 &amp;&amp; (</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;ul className="mt-3 text-sm text-red-200 space-y-1" aria-live="polite"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>{eventStatus.errors.map((err, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;li key={i}&gt;• {err}&lt;/li&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/ul&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>)}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;button</p>
+<p class="p1"><span class="Apple-converted-space">            </span>type="submit"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>disabled={eventStatus.state === "loading"}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="mt-4 inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-black hover:bg-orange-400 transition disabled:opacity-60 disabled:cursor-not-allowed"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>{eventStatus.state === "loading" ? "Sending..." : "Request Event Info"}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Icon symbol="<span class="s1">📨</span>" label="send" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/button&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>{eventStatus.state !== "idle" &amp;&amp; (</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div</p>
+<p class="p1"><span class="Apple-converted-space">              </span>className={cx(</p>
+<p class="p1"><span class="Apple-converted-space">                </span>"mt-3 text-sm",</p>
+<p class="p1"><span class="Apple-converted-space">                </span>eventStatus.state === "success" ? "text-green-300" : "text-red-300"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>aria-live="polite"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>{eventStatus.message}</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>)}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/form&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/Section&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// KPIs + Launch</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">const KPIsSection = ({ kpis }: { kpis: KPI[] }) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="metrics"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;h2 className="text-3xl sm:text-4xl font-semibold"&gt;Success Metrics&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;p className="mt-2 text-white/70"&gt;Leading indicators to prove competitive gains.&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-4 gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>{kpis.map((k, i) =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Card key={i} className="flex items-center gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="rounded-xl bg-white/10 p-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Icon symbol={k.symbol} className="text-lg" label="metric" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="text-2xl font-semibold"&gt;{k.value}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="text-sm text-white/70"&gt;{k.label}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>))}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">const LaunchSection = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;Section id="launch"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;Card className="relative overflow-hidden"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;div className="relative grid lg:grid-cols-3 gap-6 items-center"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="lg:col-span-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;h3 className="text-2xl sm:text-3xl font-semibold"&gt;Ready to Launch the Campaign?&lt;/h3&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;p className="mt-2 text-white/80"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>This microsite is your playbook. Next: schedule content, lock feature drops, and launch ads.</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="mt-4 flex flex-wrap gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;30-Day Calendar&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;Influencer Tastings&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;Ad Copy + Creative&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Pill&gt;Priority Guest Club&lt;/Pill&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="flex flex-col gap-3"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href="#home"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="rounded-xl bg-orange-500 px-5 py-3 font-semibold text-black text-center hover:bg-orange-400 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Execute Plan</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">            </span>href="#content"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>className="rounded-xl bg-white/10 border border-white/15 px-5 py-3 font-semibold text-center hover:bg-white/15 transition"</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>Build Content Engine</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/Card&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/Section&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Layout bits</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">const Background = () =&gt; (</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div className="fixed inset-0 -z-10"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(255,115,0,0.25),transparent_60%)]" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="absolute inset-0 bg-[radial-gradient(40%_50%_at_80%_20%,rgba(255,255,255,0.08),transparent_60%)]" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="absolute inset-0 bg-[radial-gradient(50%_70%_at_20%_40%,rgba(255,60,0,0.12),transparent_60%)]" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1">);</p>
+<p class="p2"><br></p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">// Page</p>
+<p class="p1">// ------------------------------</p>
+<p class="p1">export default function BackburnerCompetitiveSite() {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const [mode, setMode] = useState&lt;Mode&gt;("Executive");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const kpis = useMemo(() =&gt; strategyData.KPI_ROWS, []);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const restaurantSchema = useMemo(</p>
+<p class="p1"><span class="Apple-converted-space">    </span>() =&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>JSON.stringify({</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"@context": "https://schema.org",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>"@type": "Restaurant",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>name: "The Backburner",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>address: {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>"@type": "PostalAddress",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>addressLocality: "Hockessin",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>addressRegion: "DE",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>postalCode: "19707",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>addressCountry: "US",</p>
+<p class="p1"><span class="Apple-converted-space">        </span>},</p>
+<p class="p1"><span class="Apple-converted-space">        </span>telephone: DEPLOY_CONFIG.phoneDisplay,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>servesCuisine: ["American", "Fine Dining", "Steak", "Seafood"],</p>
+<p class="p1"><span class="Apple-converted-space">        </span>url: DEPLOY_CONFIG.OPENTABLE_URL,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}),</p>
+<p class="p1"><span class="Apple-converted-space">    </span>[]</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return (</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div className="min-h-screen bg-black text-white scroll-smooth"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;script</p>
+<p class="p1"><span class="Apple-converted-space">        </span>type="application/ld+json"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>dangerouslySetInnerHTML={{ __html: restaurantSchema }}</p>
+<p class="p1"><span class="Apple-converted-space">      </span>/&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;Background /&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;header className="sticky top-0 z-30 border-b border-white/10 bg-black/60 backdrop-blur"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-center gap-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="rounded-xl bg-white/10 p-2"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;Icon symbol="<span class="s1">🔥</span>" label="flame" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div className="font-semibold"&gt;The Backburner&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>&lt;div className="text-xs text-white/60"&gt;Hockessin Competitive Plan&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;nav className="hidden md:flex items-center gap-6 text-sm text-white/80" aria-label="Primary"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#positioning" className="hover:text-white"&gt;Positioning&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#battle" className="hover:text-white"&gt;Battle Plan&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#content" className="hover:text-white"&gt;Content Engine&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#calendar" className="hover:text-white"&gt;30-Day Calendar&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#ads" className="hover:text-white"&gt;Ad Concepts&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#conversion" className="hover:text-white"&gt;Conversion&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#visit" className="hover:text-white"&gt;Map &amp; Directions&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#events" className="hover:text-white"&gt;Private Events&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#metrics" className="hover:text-white"&gt;KPIs&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#launch" className="hover:text-white"&gt;Launch&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/nav&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;Toggle options={["Executive", "Deep Dive"]} value={mode} onChange={setMode} /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/header&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;HeroSection mode={mode} /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;PositioningSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;BattlePlanSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;ContentEngineSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;CalendarSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;AdsSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;ConversionSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;VisitSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;EventsSection /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;KPIsSection kpis={kpis} /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;LaunchSection /&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;footer className="border-t border-white/10 py-10 mt-8"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-sm text-white/70"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div className="font-semibold text-white"&gt;The Backburner&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div&gt;{DEPLOY_CONFIG.addressDisplay}&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;div className="flex items-center gap-4"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#home" className="hover:text-white"&gt;Back to top&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">              </span>href={DEPLOY_CONFIG.directionsUrl}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>target="_blank"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>rel="noopener noreferrer"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>className="hover:text-white"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>Directions</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a</p>
+<p class="p1"><span class="Apple-converted-space">              </span>href={DEPLOY_CONFIG.OPENTABLE_URL}</p>
+<p class="p1"><span class="Apple-converted-space">              </span>target="_blank"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>rel="noopener noreferrer"</p>
+<p class="p1"><span class="Apple-converted-space">              </span>className="hover:text-white"</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&gt;</p>
+<p class="p1"><span class="Apple-converted-space">              </span>Reservations</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/footer&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p1">}</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">main_tsx = r"""import React from "react";</p>
+<p class="p1">import ReactDOM from "react-dom/client";</p>
+<p class="p1">import App from "./App";</p>
+<p class="p1">import "./index.css";</p>
+<p class="p2"><br></p>
+<p class="p1">ReactDOM.createRoot(document.getElementById("root")!).render(</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;React.StrictMode&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;App /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/React.StrictMode&gt;</p>
+<p class="p1">);</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">index_css = r"""@tailwind base;</p>
+<p class="p1">@tailwind components;</p>
+<p class="p1">@tailwind utilities;</p>
+<p class="p2"><br></p>
+<p class="p1">:root {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>color-scheme: dark;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">html, body, #root {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>height: 100%;</p>
+<p class="p1">}</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">index_html = r"""&lt;!doctype html&gt;</p>
+<p class="p1">&lt;html lang="en"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;head&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta charset="UTF-8" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta name="viewport" content="width=device-width, initial-scale=1.0" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;title&gt;The Backburner | Hockessin Competitive Microsite&lt;/title&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta name="description" content="Modern American fine dining in Hockessin, DE. 90-day competitive plan to win share from Red Fire Grill and William &amp; Mary." /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta property="og:title" content="The Backburner | Modern Fine Dining in Hockessin" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta property="og:description" content="Seasonal plates, refined cocktails, private events, and a 90-day marketing sprint." /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta property="og:type" content="website" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta name="theme-color" content="#000000" /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/head&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;body&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="root"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;script type="module" src="/src/main.tsx"&gt;&lt;/script&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">vite_config = r"""import { defineConfig } from "vite";</p>
+<p class="p1">import react from "@vitejs/plugin-react";</p>
+<p class="p2"><br></p>
+<p class="p1">export default defineConfig({</p>
+<p class="p1"><span class="Apple-converted-space">  </span>plugins: [react()],</p>
+<p class="p1"><span class="Apple-converted-space">  </span>server: { port: 5173 },</p>
+<p class="p1"><span class="Apple-converted-space">  </span>preview: { port: 4173 },</p>
+<p class="p1">});</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">tailwind_config = r"""export default {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>content: ["./index.html", "./src/**/*.{ts,tsx}"],</p>
+<p class="p1"><span class="Apple-converted-space">  </span>theme: { extend: {} },</p>
+<p class="p1"><span class="Apple-converted-space">  </span>plugins: [],</p>
+<p class="p1">};</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">postcss_config = r"""export default {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>plugins: {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>tailwindcss: {},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>autoprefixer: {},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>},</p>
+<p class="p1">};</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">tsconfig = r"""{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"compilerOptions": {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"target": "ES2020",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"useDefineForClassFields": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"lib": ["ES2020", "DOM", "DOM.Iterable"],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"module": "ESNext",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"skipLibCheck": true,</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>"moduleResolution": "bundler",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"allowImportingTsExtensions": false,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"resolveJsonModule": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"isolatedModules": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"noEmit": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"jsx": "react-jsx",</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>"strict": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"noUnusedLocals": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"noUnusedParameters": true,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"noFallthroughCasesInSwitch": true</p>
+<p class="p1"><span class="Apple-converted-space">  </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"include": ["src"]</p>
+<p class="p1">}</p>
+<p class="p1">"""</p>
+<p class="p2"><br></p>
+<p class="p1">package_json = {</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"name": "backburner-competitive-microsite",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"private": True,</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"version": "0.0.1",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"type": "module",</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"scripts": {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"dev": "vite",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"build": "vite build",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"preview": "vite preview --host 0.0.0.0 --port $PORT"</p>
+<p class="p1"><span class="Apple-converted-space">  </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"dependencies": {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"framer-motion": "^11.0.0",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"react": "^18.2.0",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"react-dom": "^18.2.0"</p>
+<p class="p1"><span class="Apple-converted-space">  </span>},</p>
+<p class="p1"><span class="Apple-converted-space">  </span>"devDependencies": {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"@types/react": "^18.2.66",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"@types/react-dom": "^18.2.22",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"@vitejs/plugin-react": "^4.2.1",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"autoprefixer": "^10.4.19",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"postcss": "^8.4.38",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"tailwindcss": "^3.4.4",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"typescript": "^5.4.5",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"vite": "^5.2.0"</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">readme = r"""# The Backburner Competitive Microsite</p>
+<p class="p2"><br></p>
+<p class="p1">Single-page React + Tailwind microsite presenting a 90-day marketing plan to out-compete</p>
+<p class="p1">Red Fire Grill and William &amp; Mary in Hockessin, Delaware.</p>
+<p class="p2"><br></p>
+<p class="p1">## Quick start</p>
+<p class="p2"><br></p>
+<p class="p1">```bash</p>
+<p class="p1">npm install</p>
+<p class="p1">npm run dev</p>
+</body>
+</html>
